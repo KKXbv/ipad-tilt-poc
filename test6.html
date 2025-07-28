@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>iPad Orientation Guide PoC</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background: #000;
+            overflow: hidden;
+            height: 100vh;
+            position: relative;
+        }
+
+        #videoContainer {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        #video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .glow-indicator {
+            position: absolute;
+            left: 0;
+            right: 0;
+            height: 500px; /* Increased from 400px for better coverage */
+            transition: all 0.5s ease;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        .glow-top {
+            top: 0;
+            background: linear-gradient(to bottom, 
+                rgba(0, 100, 255, 0.95) 0%, 
+                rgba(0, 100, 255, 0.8) 20%, 
+                rgba(0, 100, 255, 0.6) 40%, 
+                rgba(0, 100, 255, 0.3) 70%, 
+                transparent 100%);
+        }
+
+        .glow-bottom {
+            bottom: 0;
+            background: linear-gradient(to top, 
+                rgba(0, 100, 255, 0.95) 0%, 
+                rgba(0, 100, 255, 0.8) 20%, 
+                rgba(0, 100, 255, 0.6) 40%, 
+                rgba(0, 100, 255, 0.3) 70%, 
+                transparent 100%);
+        }
+
+        .glow-top.glow-green {
+            background: linear-gradient(to bottom, 
+                rgba(0, 255, 100, 0.95) 0%, 
+                rgba(0, 255, 100, 0.8) 20%, 
+                rgba(0, 255, 100, 0.6) 40%, 
+                rgba(0, 255, 100, 0.3) 70%, 
+                transparent 100%);
+        }
+
+        .glow-bottom.glow-green {
+            background: linear-gradient(to top, 
+                rgba(0, 255, 100, 0.95) 0%, 
+                rgba(0, 255, 100, 0.8) 20%, 
+                rgba(0, 255, 100, 0.6) 40%, 
+                rgba(0, 255, 100, 0.3) 70%, 
+                transparent 100%);
+        }
+
+        .glow-top.glow-red {
+            background: linear-gradient(to bottom, 
+                rgba(255, 0, 0, 0.98) 0%, 
+                rgba(255, 50, 50, 0.85) 20%, 
+                rgba(255, 100, 100, 0.6) 40%, 
+                rgba(255, 150, 150, 0.3) 70%, 
+                transparent 100%);
+        }
+
+        .glow-bottom.glow-red {
+            background: linear-gradient(to top, 
+                rgba(255, 0, 0, 0.98) 0%, 
+                rgba(255, 50, 50, 0.85) 20%, 
+                rgba(255, 100, 100, 0.6) 40%, 
+                rgba(255, 150, 150, 0.3) 70%, 
+                transparent 100%);
+        }
+
+        .glow-pulse {
+            animation: pulseGlow 1s ease-in-out infinite;
+        }
+
+        @keyframes pulseGlow {
+            0% { opacity: 1; }
+            50% { opacity: 0.4; }
+            100% { opacity: 1; }
+        }
+
+        .hidden {
+            opacity: 0;
+        }
+
+        #info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            font-size: 14px;
+            z-index: 20;
+            max-width: 300px;
+        }
+
+        #debugInfo {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            z-index: 20;
+            font-family: monospace;
+        }
+
+        .status {
+            margin-top: 10px;
+            font-weight: bold;
+        }
+
+        .target-up {
+            color: #64b5f6;
+        }
+
+        .target-down {
+            color: #81c784;
+        }
+
+        .achieved {
+            color: #4caf50;
+        }
+
+        #startButton {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: #2196f3;
+            color: white;
+            border: none;
+            padding: 20px 40px;
+            border-radius: 10px;
+            font-size: 18px;
+            cursor: pointer;
+            z-index: 30;
+        }
+
+        #startButton:hover {
+            background: #1976d2;
+        }
+    </style>
+</head>
+<body>
+    <div id="videoContainer">
+        <video id="video" autoplay playsinline></video>
+        
+        <div id="glowTop" class="glow-indicator glow-top hidden"></div>
+        <div id="glowBottom" class="glow-indicator glow-bottom hidden"></div>
+        
+        <button id="startButton">Start Camera & Orientation</button>
+        
+        <div id="info">
+            <div>iPad Orientation Guide</div>
+            <div class="status" id="status">Click Start to begin</div>
+            <div style="margin-top: 10px; font-size: 12px;">
+                Target: Tilt between 40° and 80°<br>
+                Follow the glow: Blue → Green when correct<br>
+                <span style="color: #ff3333;">Red = Too fast! Move slowly</span><br>
+                <span style="color: #64b5f6;">Pulsing glow = Move the iPad!</span>
+            </div>
+        </div>
+        
+        <div id="debugInfo">
+            <div>Beta (Tilt): <span id="betaValue">--</span>°</div>
+            <div>Target: <span id="targetDirection">--</span></div>
+            <div>In Range: <span id="inRange">--</span></div>
+            <div>Time: <span id="timeElapsed">--</span>s</div>
+        </div>
+    </div>
+
+    <script>
+        class OrientationGuide {
+            constructor() {
+                this.video = document.getElementById('video');
+                this.glowTop = document.getElementById('glowTop');
+                this.glowBottom = document.getElementById('glowBottom');
+                this.status = document.getElementById('status');
+                this.startButton = document.getElementById('startButton');
+                
+                // Debug elements
+                this.betaValue = document.getElementById('betaValue');
+                this.targetDirection = document.getElementById('targetDirection');
+                this.inRange = document.getElementById('inRange');
+                this.timeElapsed = document.getElementById('timeElapsed');
+                
+                // State management
+                this.currentTarget = 'up'; // 'up' or 'down'
+                this.targetAngle = 80; // Start with tilt up target
+                this.minAngle = 40;
+                this.maxAngle = 80;
+                this.isInTargetRange = false;
+                this.hasReachedTarget = false;
+                this.targetStartTime = null; // Track when target starts
+                this.minTargetDuration = 1000; // Minimum 1 second to reach target
+                this.maxIdleTime = 3000; // Maximum 3 seconds without movement
+                this.lastBeta = null; // Track last orientation
+                this.lastMovementTime = null; // Track when user last moved
+                this.isPulsing = false; // Track if glow is currently pulsing
+                
+                this.setupEventListeners();
+            }
+            
+            setupEventListeners() {
+                this.startButton.addEventListener('click', () => this.initialize());
+                
+                // Handle device orientation
+                if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                    // iOS 13+ requires permission
+                    this.requestOrientationPermission();
+                } else {
+                    // Other devices
+                    window.addEventListener('deviceorientation', (event) => this.handleOrientation(event));
+                }
+            }
+            
+            async requestOrientationPermission() {
+                try {
+                    const permission = await DeviceOrientationEvent.requestPermission();
+                    if (permission === 'granted') {
+                        window.addEventListener('deviceorientation', (event) => this.handleOrientation(event));
+                    } else {
+                        this.status.textContent = 'Orientation permission denied';
+                    }
+                } catch (error) {
+                    console.error('Error requesting orientation permission:', error);
+                    // Fallback for older iOS versions
+                    window.addEventListener('deviceorientation', (event) => this.handleOrientation(event));
+                }
+            }
+            
+            async initialize() {
+                try {
+                    // Request camera access
+                    const stream = await navigator.mediaDevices.getUserMedia({
+                        video: {
+                            facingMode: 'environment', // Use back camera
+                            width: { ideal: 1920 },
+                            height: { ideal: 1080 }
+                        }
+                    });
+                    
+                    this.video.srcObject = stream;
+                    this.startButton.style.display = 'none';
+                    
+                    // Start the guidance
+                    this.startGuidance();
+                    
+                } catch (error) {
+                    console.error('Error accessing camera:', error);
+                    this.status.textContent = 'Camera access denied or unavailable';
+                }
+            }
+            
+            startGuidance() {
+                this.status.textContent = 'Tilt iPad UP to 80°';
+                this.status.className = 'status target-up';
+                this.updateGlowIndicator();
+                this.targetStartTime = Date.now(); // Start timing
+                this.lastMovementTime = Date.now(); // Start movement tracking
+            }
+            
+            handleOrientation(event) {
+                const beta = event.beta; // Front-to-back tilt (-180 to 180)
+                
+                if (beta === null) return;
+                
+                // Check for movement (more than 1 degree change)
+                if (this.lastBeta !== null && Math.abs(beta - this.lastBeta) > 1) {
+                    this.lastMovementTime = Date.now();
+                    // Stop pulsing when user starts moving
+                    if (this.isPulsing) {
+                        this.stopAllPulsing();
+                    }
+                }
+                this.lastBeta = beta;
+                
+                // Update debug info
+                this.betaValue.textContent = Math.round(beta);
+                this.targetDirection.textContent = this.currentTarget;
+                
+                // Update elapsed time
+                if (this.targetStartTime) {
+                    const elapsed = (Date.now() - this.targetStartTime) / 1000;
+                    this.timeElapsed.textContent = elapsed.toFixed(1);
+                }
+                
+                // Check if in target range
+                this.checkTargetRange(beta);
+                
+                // Update glow color and size based on proximity to target
+                this.updateGlowColor(beta);
+                
+                // Check for inactivity and grow glow if user is too slow
+                this.checkInactivity();
+            }
+            
+            checkTargetRange(beta) {
+                const isInRange = beta >= this.minAngle && beta <= this.maxAngle;
+                this.inRange.textContent = isInRange ? 'YES' : 'NO';
+                
+                if (isInRange && !this.isInTargetRange) {
+                    // Just entered target range
+                    this.isInTargetRange = true;
+                    this.checkTargetAchievement(beta);
+                } else if (!isInRange && this.isInTargetRange) {
+                    // Left target range
+                    this.isInTargetRange = false;
+                    this.hasReachedTarget = false;
+                } else if (isInRange) {
+                    // Still in range, check achievement
+                    this.checkTargetAchievement(beta);
+                }
+            }
+            
+            checkTargetAchievement(beta) {
+                let achieved = false;
+                
+                if (this.currentTarget === 'up' && beta >= 75) {
+                    achieved = true;
+                } else if (this.currentTarget === 'down' && beta <= 45) {
+                    achieved = true;
+                }
+                
+                if (achieved && !this.hasReachedTarget) {
+                    this.hasReachedTarget = true;
+                    
+                    // Check if movement was too fast
+                    const timeToReachTarget = Date.now() - this.targetStartTime;
+                    const isTooFast = timeToReachTarget < this.minTargetDuration;
+                    
+                    if (isTooFast) {
+                        this.showRedFlash(); // Show red for fast movement
+                    } else {
+                        this.showGreenFlash(); // Show green for good movement
+                    }
+                    
+                    // Always switch target regardless of speed
+                    this.switchTargetImmediate();
+                }
+            }
+            
+            showRedFlash() {
+                // Show red color when movement is too fast
+                const activeGlow = this.currentTarget === 'up' ? this.glowTop : this.glowBottom;
+                activeGlow.classList.add('glow-red');
+                
+                // Remove red after 800ms (longer to emphasize the warning)
+                setTimeout(() => {
+                    activeGlow.classList.remove('glow-red');
+                }, 800);
+            }
+            
+            showGreenFlash() {
+                // Briefly show green color when target is reached
+                const activeGlow = this.currentTarget === 'up' ? this.glowTop : this.glowBottom;
+                activeGlow.classList.add('glow-green');
+                
+                // Remove green after 500ms (shorter duration)
+                setTimeout(() => {
+                    activeGlow.classList.remove('glow-green');
+                }, 500);
+            }
+            
+            switchTargetImmediate() {
+                // Stop all animations and effects before switching
+                this.stopAllPulsing();
+                
+                // Switch target immediately when achieved
+                if (this.currentTarget === 'up') {
+                    this.currentTarget = 'down';
+                    this.targetAngle = 40;
+                    this.status.textContent = 'Tilt iPad DOWN to 40°';
+                    this.status.className = 'status target-down';
+                } else {
+                    this.currentTarget = 'up';
+                    this.targetAngle = 80;
+                    this.status.textContent = 'Tilt iPad UP to 80°';
+                    this.status.className = 'status target-up';
+                }
+                
+                this.hasReachedTarget = false;
+                this.updateGlowIndicator();
+                this.resetGlowSize(); // Reset to maximum size when switching
+                this.targetStartTime = Date.now(); // Start timing for new target
+                this.lastMovementTime = Date.now(); // Reset movement tracking
+            }
+            
+            checkInactivity() {
+                // If user hasn't moved for more than maxIdleTime, start pulsing the glow
+                if (this.lastMovementTime && !this.hasReachedTarget) {
+                    const timeSinceMovement = Date.now() - this.lastMovementTime;
+                    if (timeSinceMovement > this.maxIdleTime && !this.isPulsing) {
+                        this.startPulsing();
+                    }
+                }
+            }
+            
+            startPulsing() {
+                // Stop any existing pulsing first
+                this.stopAllPulsing();
+                
+                const activeGlow = this.currentTarget === 'up' ? this.glowTop : this.glowBottom;
+                activeGlow.classList.add('glow-pulse');
+                this.isPulsing = true;
+            }
+            
+            stopPulsing() {
+                const activeGlow = this.currentTarget === 'up' ? this.glowTop : this.glowBottom;
+                activeGlow.classList.remove('glow-pulse');
+                this.isPulsing = false;
+            }
+            
+            stopAllPulsing() {
+                // Stop pulsing on both glows to prevent conflicts
+                this.glowTop.classList.remove('glow-pulse');
+                this.glowBottom.classList.remove('glow-pulse');
+                this.isPulsing = false;
+            }
+            
+            growGlowForInactivity(inactiveTime) {
+                // This method is no longer used - replaced with pulsing effect
+                // Keeping for compatibility
+            }
+            
+            switchTarget() {
+                // This method is no longer used - keeping for compatibility
+                // Target switching now happens immediately via switchTargetImmediate()
+            }
+            
+            resetGlowSize() {
+                // Reset glow to maximum size when switching targets
+                // Clean up both glows to prevent conflicts
+                this.glowTop.style.height = '500px'; // Updated to match new default size
+                this.glowBottom.style.height = '500px';
+                
+                // Ensure only the correct glow is visible
+                const activeGlow = this.currentTarget === 'up' ? this.glowTop : this.glowBottom;
+                const inactiveGlow = this.currentTarget === 'up' ? this.glowBottom : this.glowTop;
+                
+                activeGlow.classList.remove('hidden');
+                inactiveGlow.classList.add('hidden');
+            }
+            
+            updateGlowIndicator() {
+                // Stop all pulsing before switching
+                this.stopAllPulsing();
+                
+                if (this.currentTarget === 'up') {
+                    this.glowTop.classList.remove('hidden');
+                    this.glowBottom.classList.add('hidden');
+                } else {
+                    this.glowTop.classList.add('hidden');
+                    this.glowBottom.classList.remove('hidden');
+                }
+                
+                // Reset size when showing new glow
+                this.resetGlowSize();
+            }
+            
+            updateGlowColor(beta) {
+                const activeGlow = this.currentTarget === 'up' ? this.glowTop : this.glowBottom;
+                
+                // Don't interfere with green/red flashes - let them show regardless of movement
+                // Only update size based on proximity, color stays blue until target reached
+                if (this.isInTargetRange && !this.hasReachedTarget) {
+                    let proximity = 0;
+                    if (this.currentTarget === 'up') {
+                        proximity = Math.max(0, (beta - 60) / 20); // Start transition from 60° to 80°
+                    } else {
+                        proximity = Math.max(0, (60 - beta) / 20); // Start transition from 60° to 40°
+                    }
+                    
+                    proximity = Math.min(1, proximity);
+                    this.updateGlowSize(proximity);
+                }
+            }
+            
+            updateGlowSize(proximity) {
+                const activeGlow = this.currentTarget === 'up' ? this.glowTop : this.glowBottom;
+                
+                // Size ranges from 500px (far from target) to 150px (at target)
+                // Increased minimum size to ensure better visibility of effects
+                const maxSize = 500;
+                const minSize = 150;
+                const currentSize = maxSize - (proximity * (maxSize - minSize));
+                
+                activeGlow.style.height = `${currentSize}px`;
+            }
+        }
+        
+        // Initialize when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new OrientationGuide();
+        });
+        
+        // Prevent zoom on iOS
+        document.addEventListener('gesturestart', function (e) {
+            e.preventDefault();
+        });
+        
+        document.addEventListener('gesturechange', function (e) {
+            e.preventDefault();
+        });
+        
+        document.addEventListener('gestureend', function (e) {
+            e.preventDefault();
+        });
+    </script>
+</body>
+</html>

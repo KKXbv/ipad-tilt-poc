@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>PoC #3 – Tunnel with Faint Ring Fill</title>
+  <style>
+    html, body {
+      margin: 0;
+      overflow: hidden;
+      background: black;
+      touch-action: none;
+    }
+    video {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      z-index: 0;
+    }
+    canvas {
+      position: fixed;
+      top: 0; left: 0;
+      z-index: 1;
+      pointer-events: none;
+    }
+    #permissionButton {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      z-index: 2;
+      font-size: 1.2em;
+      padding: 1em;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+<video id="video" autoplay muted playsinline></video>
+<canvas id="canvas"></canvas>
+<button id="permissionButton">Enable Motion Access</button>
+<audio id="collectSound" src="https://freesound.org/data/previews/341/341695_3248244-lq.mp3" preload="auto"></audio>
+
+<script>
+const video = document.getElementById('video');
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const permissionButton = document.getElementById('permissionButton');
+const collectSound = document.getElementById('collectSound');
+
+let width = 0;
+let height = 0;
+
+let userBeta = 60;
+const betaMin = 45;
+const betaMax = 75;
+const crosshairYRange = 0.6;
+
+const rings = [];
+const ringLifetime = 2000; // ms
+const spawnInterval = 100; // ms
+const waveCycle = 5000; // 5 sec
+
+function setupCamera() {
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false })
+    .then(stream => video.srcObject = stream)
+    .catch(err => alert('Camera error: ' + err));
+}
+
+function betaToY(beta) {
+  const clamped = Math.max(betaMin, Math.min(betaMax, beta));
+  const norm = (clamped - betaMin) / (betaMax - betaMin);
+  const yRange = height * crosshairYRange;
+  const yOffset = (height - yRange) / 2;
+  return yOffset + (1 - norm) * yRange;
+}
+
+function computeSinusYAtSpawn(time) {
+  const wave = Math.sin((time % waveCycle) / waveCycle * 2 * Math.PI);
+  const yNorm = 0.5 - wave * 0.4;
+  return yNorm * height;
+}
+
+function spawnRing() {
+  const now = performance.now();
+  const y = computeSinusYAtSpawn(now);
+  rings.push({ start: now, y, collected: false });
+}
+
+function draw(now) {
+  ctx.clearRect(0, 0, width, height);
+
+  const crosshairX = width / 2;
+  const crosshairY = betaToY(userBeta);
+
+  for (let i = rings.length - 1; i >= 0; i--) {
+    const ring = rings[i];
+    const progress = (now - ring.start) / ringLifetime;
+    if (progress >= 1) continue;
+
+    const scale = progress;
+    const ringX = width / 2;
+    const ringY = ring.y;
+    const maxRadius = Math.max(width, height) * 1.2;
+    const outerRadius = 40 + maxRadius * scale;
+    const alpha = Math.min(1, progress * 40); // Reach full opacity twice as fast
+
+    // Ring collection logic
+    if (!ring.collected && Math.abs(crosshairY - ringY) < outerRadius / 2 && progress > 0.9) {
+      ring.collected = true;
+      collectSound.currentTime = 0;
+      collectSound.play();
+    }
+
+    // Faint black fill (starts at 10% opacity, decreases to 0%)
+    ctx.save();
+    ctx.globalAlpha = 0.2 * (1 - progress);
+    ctx.beginPath();
+    ctx.arc(ringX, ringY, outerRadius, 0, Math.PI * 2);
+    ctx.fillStyle = 'black';
+    ctx.fill();
+    ctx.restore();
+
+    ctx.globalAlpha = alpha;
+    ctx.beginPath();
+    ctx.arc(ringX, ringY, outerRadius, 0, Math.PI * 2);
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = ring.collected ? 'lime' : 'yellow';
+    ctx.stroke();
+  }
+
+  ctx.globalAlpha = 1;
+  ctx.beginPath();
+  ctx.strokeStyle = 'white';
+  ctx.lineWidth = 2;
+  ctx.arc(crosshairX, crosshairY, 20, 0, Math.PI * 2);
+  ctx.moveTo(crosshairX - 30, crosshairY);
+  ctx.lineTo(crosshairX + 30, crosshairY);
+  ctx.moveTo(crosshairX, crosshairY - 30);
+  ctx.lineTo(crosshairX, crosshairY + 30);
+  ctx.stroke();
+
+  requestAnimationFrame(draw);
+}
+
+function resizeCanvas() {
+  width = canvas.width = window.innerWidth;
+  height = canvas.height = window.innerHeight;
+}
+
+function handleOrientation(event) {
+  if (event.beta !== null) {
+    userBeta = event.beta;
+  }
+}
+
+function startGame() {
+  setupCamera();
+  resizeCanvas();
+  window.addEventListener('deviceorientation', handleOrientation);
+  requestAnimationFrame(draw);
+  setInterval(spawnRing, spawnInterval);
+}
+
+function enableMotion() {
+  if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+    DeviceOrientationEvent.requestPermission().then(state => {
+      if (state === 'granted') {
+        permissionButton.style.display = 'none';
+        startGame();
+      } else {
+        alert('Permission denied.');
+      }
+    }).catch(err => alert('Motion error: ' + err));
+  } else {
+    startGame();
+  }
+}
+
+if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+  permissionButton.style.display = 'block';
+  permissionButton.addEventListener('click', enableMotion);
+} else {
+  enableMotion();
+}
+
+window.addEventListener('resize', resizeCanvas);
+</script>
+
+</body>
+</html>

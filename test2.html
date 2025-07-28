@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Tilt Tracker Vertical</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: sans-serif;
+      background: #111;
+      color: white;
+      text-align: center;
+    }
+
+    h1 {
+      margin-top: 1em;
+    }
+
+    #gameArea {
+      position: relative;
+      width: 100%;
+      height: 70vh;
+      max-width: 600px;
+      margin: 2em auto;
+      background-color: #222;
+      border: 4px solid #444;
+      overflow: hidden;
+    }
+
+    #targetLine {
+      position: absolute;
+      height: 40px; /* MATCH ball */
+      width: 100%;
+      background-color: white;
+      left: 0;
+    }
+
+    #ball {
+      position: absolute;
+      left: 50%;
+      width: 40px;
+      height: 40px;
+      background-color: red;
+      border-radius: 50%;
+      transform: translateX(-50%);
+    }
+
+    #status {
+      font-size: 1.5em;
+    }
+
+    #permissionButton {
+      font-size: 1.2em;
+      padding: 1em;
+      margin-top: 2em;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Tilt to Follow!</h1>
+  <p>Tilt your iPad forward/backward to move the ball vertically and follow the white line</p>
+
+  <div id="gameArea">
+    <div id="targetLine"></div>
+    <div id="ball"></div>
+  </div>
+
+  <div id="status">Waiting for permission...</div>
+  <button id="permissionButton">Enable Motion Access</button>
+
+  <script>
+    const gameArea = document.getElementById('gameArea');
+    const targetLine = document.getElementById('targetLine');
+    const ball = document.getElementById('ball');
+    const statusText = document.getElementById('status');
+    const permissionButton = document.getElementById('permissionButton');
+
+    const betaMin = 40;  // iPad slightly upright
+    const betaMax = 80;  // iPad tilted back
+    const marginDeg = 5;
+    const ballHeight = 40;
+
+    let userBeta = 60;
+    let accumulatedMotion = 0; // Track forward/backward motion
+    let lastAcceleration = null;
+
+    function betaToY(beta) {
+      const clamped = Math.max(betaMin, Math.min(betaMax, beta));
+      const norm = (clamped - betaMin) / (betaMax - betaMin); // 0 to 1
+      const areaHeight = gameArea.clientHeight;
+      return (1 - norm) * (areaHeight - ballHeight);
+    }
+
+    function animate() {
+      const areaHeight = gameArea.clientHeight;
+
+      // Use accumulated motion to drive sine wave
+      const radians = accumulatedMotion;
+      const sine = (Math.sin(radians - Math.PI / 2) + 1) / 2; // 0–1
+      const targetY = sine * (areaHeight - ballHeight);
+
+      const userY = betaToY(userBeta);
+
+      // Move elements
+      targetLine.style.top = `${targetY}px`;
+      ball.style.top = `${userY}px`;
+
+      // Compare tilt vs line
+      const targetBeta = betaMin + (1 - sine) * (betaMax - betaMin);
+      const diff = Math.abs(userBeta - targetBeta);
+      if (diff <= marginDeg) {
+        ball.style.backgroundColor = 'lime';
+        statusText.textContent = 'Great!';
+      } else {
+        ball.style.backgroundColor = 'red';
+        statusText.textContent = 'Off track!';
+      }
+
+      requestAnimationFrame(animate);
+    }
+
+    function handleOrientation(event) {
+      if (event.beta !== null) {
+        userBeta = event.beta;
+      }
+    }
+
+    function handleMotion(event) {
+      if (event.acceleration && event.acceleration.y !== null) {
+        const currentAccel = event.acceleration.y;
+        
+        // Apply a simple low-pass filter to smooth the data
+        if (lastAcceleration !== null) {
+          const smoothedAccel = 0.8 * lastAcceleration + 0.2 * currentAccel;
+          
+          // Accumulate forward/backward motion (y-axis when iPad is held in portrait)
+          // Scale the acceleration to make the movement more noticeable
+          const motionScale = 0.1;
+          accumulatedMotion += smoothedAccel * motionScale;
+          
+          lastAcceleration = smoothedAccel;
+        } else {
+          lastAcceleration = currentAccel;
+        }
+      }
+    }
+
+    function startGame() {
+      window.addEventListener('deviceorientation', handleOrientation);
+      requestAnimationFrame(animate);
+      statusText.textContent = 'Tracking...';
+    }
+
+    function enableMotion() {
+      if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+        DeviceOrientationEvent.requestPermission().then(permissionState => {
+          if (permissionState === 'granted') {
+            permissionButton.style.display = 'none';
+            startGame();
+          } else {
+            statusText.textContent = 'Permission denied.';
+          }
+        }).catch(err => {
+          statusText.textContent = 'Error: ' + err;
+        });
+      } else {
+        startGame();
+      }
+    }
+
+    // iOS requires user gesture to request permission
+    if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+      permissionButton.style.display = 'block';
+      permissionButton.addEventListener('click', enableMotion);
+    } else {
+      enableMotion();
+    }
+  </script>
+
+</body>
+</html>

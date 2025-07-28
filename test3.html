@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Sinus Sync – Centered</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: sans-serif;
+      background: #111;
+      color: white;
+      text-align: center;
+    }
+    h1 {
+      margin-top: 1em;
+    }
+    #canvas {
+      background: #222;
+      border: 4px solid #444;
+      display: block;
+      margin: 2em auto;
+    }
+    #status {
+      font-size: 1.5em;
+    }
+    #permissionButton {
+      font-size: 1.2em;
+      padding: 1em;
+      margin-top: 2em;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+<h1>Sinus Sync</h1>
+<p>Move your iPad forward/backward to stay within the wave!</p>
+<canvas id="canvas" width="600" height="300"></canvas>
+<div id="status">Waiting for permission...</div>
+<button id="permissionButton">Enable Motion Access</button>
+
+<script>
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+  const statusText = document.getElementById('status');
+  const permissionButton = document.getElementById('permissionButton');
+
+  const width = canvas.width;
+  const height = canvas.height;
+
+  const betaMin = 35;
+  const betaMax = 60;
+  const betaMid = (betaMin + betaMax) / 2;
+  const betaRange = (betaMax - betaMin) / 2 * 1.5; // Increased range to make wave wider
+  const marginDeg = 10; // Increased from 5 to make "on track" zone bigger
+
+  let userBeta = betaMid;
+  let accumulatedMotion = 0; // Track forward/backward motion
+  let lastAcceleration = null;
+  let motionVelocity = 0; // Smooth velocity for wave movement
+  let lastMotionUpdate = Date.now();
+
+  function draw() {
+    ctx.clearRect(0, 0, width, height);
+
+    // Smooth the motion velocity with damping
+    const now = Date.now();
+    const deltaTime = (now - lastMotionUpdate) / 1000; // seconds
+    lastMotionUpdate = now;
+    
+    // Apply damping to gradually slow down the velocity
+    const damping = 0.95; // Adjust this value (0-1) to control how quickly it stops
+    motionVelocity *= Math.pow(damping, deltaTime * 60); // 60fps reference
+    
+    // Update accumulated motion based on current velocity
+    accumulatedMotion += motionVelocity * deltaTime;
+
+    // Use accumulated motion to drive wave position
+    const scrollSpeed = 2; // scaling factor for motion sensitivity
+
+    // Draw sine wave band (± margin)
+    ctx.beginPath();
+    for (let x = 0; x <= width; x++) {
+      const t = accumulatedMotion + (x - width / 2) / width * scrollSpeed;
+      const center = betaMid + betaRange * Math.sin(t * Math.PI);
+      const upper = betaToY(center - marginDeg);
+      if (x === 0) ctx.moveTo(x, upper);
+      else ctx.lineTo(x, upper);
+    }
+    for (let x = width; x >= 0; x--) {
+      const t = accumulatedMotion + (x - width / 2) / width * scrollSpeed;
+      const center = betaMid + betaRange * Math.sin(t * Math.PI);
+      const lower = betaToY(center + marginDeg);
+      ctx.lineTo(x, lower);
+    }
+    ctx.closePath();
+    ctx.fillStyle = "#4444ff88";
+    ctx.fill();
+
+    // Draw center ball at current tilt
+    const ballX = width / 2;
+    const ballY = betaToY(userBeta);
+
+    // Compute wave target at center position (t = now)
+    const targetBeta = betaMid + betaRange * Math.sin(accumulatedMotion * Math.PI);
+    const diff = Math.abs(userBeta - targetBeta);
+
+    ctx.beginPath();
+    ctx.arc(ballX, ballY, 10, 0, Math.PI * 2);
+    if (diff <= marginDeg) {
+      ctx.fillStyle = "lime";
+      statusText.textContent = "Great!";
+    } else {
+      ctx.fillStyle = "red";
+      statusText.textContent = "Off track!";
+    }
+    ctx.fill();
+
+    requestAnimationFrame(draw);
+  }
+
+  function betaToY(beta) {
+    const clamped = Math.max(betaMin, Math.min(betaMax, beta));
+    const norm = (clamped - betaMin) / (betaMax - betaMin);
+    return (1 - norm) * height;
+  }
+
+  function handleOrientation(event) {
+    if (event.beta !== null) {
+      userBeta = event.beta;
+    }
+  }
+
+  function handleMotion(event) {
+    if (event.acceleration && event.acceleration.y !== null) {
+      const currentAccel = event.acceleration.y;
+      
+      // Apply a simple low-pass filter to smooth the data
+      if (lastAcceleration !== null) {
+        const smoothedAccel = 0.8 * lastAcceleration + 0.2 * currentAccel;
+        
+        // Only accumulate forward motion (positive y-axis acceleration)
+        // Ignore backward motion to prevent wave from going backwards
+        if (smoothedAccel > 0) {
+          const motionScale = 0.6; // Reduced from 0.5 to make movement even slower
+          // Add to velocity instead of directly to position
+          motionVelocity += smoothedAccel * motionScale;
+          
+          // Cap the maximum velocity to prevent it from getting too fast
+          const maxVelocity = 0.8; // Reduced from 1.0 to limit maximum speed further
+          motionVelocity = Math.min(motionVelocity, maxVelocity);
+        }
+        
+        lastAcceleration = smoothedAccel;
+      } else {
+        lastAcceleration = currentAccel;
+      }
+    }
+  }
+
+  function startGame() {
+    window.addEventListener('deviceorientation', handleOrientation);
+    window.addEventListener('devicemotion', handleMotion);
+    requestAnimationFrame(draw);
+    statusText.textContent = 'Tracking...';
+  }
+
+  function enableMotion() {
+    if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+      DeviceOrientationEvent.requestPermission().then(permissionState => {
+        if (permissionState === 'granted') {
+          permissionButton.style.display = 'none';
+          startGame();
+        } else {
+          statusText.textContent = 'Permission denied.';
+        }
+      }).catch(err => {
+        statusText.textContent = 'Error: ' + err;
+      });
+    } else {
+      startGame();
+    }
+  }
+
+  if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+    permissionButton.style.display = 'block';
+    permissionButton.addEventListener('click', enableMotion);
+  } else {
+    enableMotion();
+  }
+</script>
+
+</body>
+</html>

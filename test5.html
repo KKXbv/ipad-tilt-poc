@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>PoC #4 - AR Tilt Mimic</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  </head>
+  <body style="margin: 0; overflow: hidden">
+    <script type="module">
+      import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+      import { ARButton } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/webxr/ARButton.js';
+
+      let camera, scene, renderer;
+      let floatingCube;
+
+      init();
+
+      async function init() {
+        scene = new THREE.Scene();
+
+        camera = new THREE.PerspectiveCamera(
+          70,
+          window.innerWidth / window.innerHeight,
+          0.01,
+          20
+        );
+
+        renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.xr.enabled = true;
+        document.body.appendChild(renderer.domElement);
+
+        document.body.appendChild(
+          ARButton.createButton(renderer, { requiredFeatures: ['local-floor'] })
+        );
+
+        const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1);
+        scene.add(light);
+
+        // Create a slab-like object (like an iPad) - made thicker
+        const geometry = new THREE.BoxGeometry(0.25, 0.04, 0.18);
+        
+        // Create materials for different faces
+        // Order: right, left, top, bottom, front, back
+        const materials = [
+          new THREE.MeshStandardMaterial({ color: 0x888888 }), // right - gray
+          new THREE.MeshStandardMaterial({ color: 0x888888 }), // left - gray
+          new THREE.MeshStandardMaterial({ color: 0x00ff00 }), // top - green (was red, now green)
+          new THREE.MeshStandardMaterial({ color: 0x0000ff }), // bottom - blue (stays blue)
+          new THREE.MeshStandardMaterial({ color: 0x0000ff }), // front (facing you) - blue (was green, now blue)
+          new THREE.MeshStandardMaterial({ color: 0x888888 })  // back - gray
+        ];
+        
+        floatingCube = new THREE.Mesh(geometry, materials);
+        scene.add(floatingCube);
+
+        window.addEventListener('resize', onWindowResize);
+
+        animate();
+      }
+
+      function onWindowResize() {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      }
+
+      function animate() {
+        renderer.setAnimationLoop(render);
+      }
+
+      function render(timestamp, frame) {
+        const time = performance.now() / 1000;
+
+        // Keep the slab in front of the camera
+        const distance = 0.5;
+        const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+        const position = camera.position.clone().add(forward.multiplyScalar(distance));
+        floatingCube.position.copy(position);
+
+        // Set orientation relative to world/floor, not device
+        // Reset to world orientation first
+        floatingCube.quaternion.set(0, 0, 0, 1);
+
+        // Animate between 40 and 80 degrees (90 degrees is upright, 0 degrees is flat)
+        const tiltMin = 40 * Math.PI / 180;  // 40 degrees
+        const tiltMax = 80 * Math.PI / 180;  // 80 degrees
+        const tiltRange = (tiltMax - tiltMin) / 2;
+        const tiltMid = (tiltMax + tiltMin) / 2;
+        const tiltAngle = tiltMid + Math.sin(time * Math.PI / 2.5) * tiltRange;
+        
+        // Apply the tilt rotation around the world X axis
+        floatingCube.rotateX(tiltAngle);
+
+        renderer.render(scene, camera);
+      }
+    </script>
+  </body>
+</html>
