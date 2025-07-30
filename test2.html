@@ -30,7 +30,7 @@
 
     #targetLine {
       position: absolute;
-      height: 40px; /* MATCH ball */
+      height: 160px; /* 4 times higher than ball */
       width: 100%;
       background-color: white;
       left: 0;
@@ -82,6 +82,7 @@
     const betaMax = 80;  // iPad tilted back
     const marginDeg = 5;
     const ballHeight = 40;
+    const lineHeight = 160;
 
     let userBeta = 60;
     let startTime = Date.now();
@@ -109,7 +110,7 @@
         progress = 1 - ((cycleTime - 2) / 2);
       }
       
-      const targetY = (1 - progress) * (areaHeight - ballHeight);
+      const targetY = (1 - progress) * (areaHeight - lineHeight);
 
       const userY = betaToY(userBeta);
 
