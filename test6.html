@@ -179,6 +179,16 @@
     <div id="videoContainer">
         <video id="video" autoplay playsinline></video>
         
+        <!-- Audio elements for orientation guidance -->
+        <audio id="audioTiltUp" loop preload="auto">
+            <source src="tilt-up.mp3" type="audio/mpeg">
+            <source src="tick.wav" type="audio/wav">
+        </audio>
+        <audio id="audioTiltDown" loop preload="auto">
+            <source src="tilt-down.mp3" type="audio/mpeg">
+            <source src="tick.wav" type="audio/wav">
+        </audio>
+        
         <div id="glowTop" class="glow-indicator glow-top hidden"></div>
         <div id="glowBottom" class="glow-indicator glow-bottom hidden"></div>
         
@@ -191,7 +201,9 @@
                 Target: Tilt between 40° and 80°<br>
                 Follow the glow: Blue → Green when correct<br>
                 <span style="color: #ff3333;">Red = Too fast! Move slowly</span><br>
-                <span style="color: #64b5f6;">Pulsing glow = Move the iPad!</span>
+                <span style="color: #64b5f6;">Pulsing glow = Move the iPad!</span><br>
+                <span style="color: #ffd700;">🔊 Audio will guide you!</span><br>
+                <span style="color: #888; font-size: 11px;">Note: You'll be asked for camera & orientation permissions</span>
             </div>
         </div>
         
@@ -211,6 +223,11 @@
                 this.glowBottom = document.getElementById('glowBottom');
                 this.status = document.getElementById('status');
                 this.startButton = document.getElementById('startButton');
+                
+                // Audio elements
+                this.audioTiltUp = document.getElementById('audioTiltUp');
+                this.audioTiltDown = document.getElementById('audioTiltDown');
+                this.currentAudio = null;
                 
                 // Debug elements
                 this.betaValue = document.getElementById('betaValue');
@@ -233,38 +250,173 @@
                 this.isPulsing = false; // Track if glow is currently pulsing
                 
                 this.setupEventListeners();
+                this.setupAudio();
+                
+                // Add a global reference for debugging
+                window.orientationGuide = this;
+            }
+            
+            // Debug method to test audio files manually
+            testAudio(direction) {
+                console.log(`Testing ${direction} audio...`);
+                if (direction === 'up') {
+                    this.audioTiltUp.currentTime = 0;
+                    this.audioTiltUp.play().then(() => {
+                        console.log('Tilt up audio test: SUCCESS');
+                    }).catch(e => {
+                        console.error('Tilt up audio test: FAILED', e);
+                    });
+                } else if (direction === 'down') {
+                    this.audioTiltDown.currentTime = 0;
+                    this.audioTiltDown.play().then(() => {
+                        console.log('Tilt down audio test: SUCCESS');
+                    }).catch(e => {
+                        console.error('Tilt down audio test: FAILED', e);
+                    });
+                }
+            }
+            
+            setupAudio() {
+                // Set up audio properties for iOS compatibility
+                this.audioTiltUp.volume = 0.7;
+                this.audioTiltDown.volume = 0.7;
+                
+                // Handle audio loading and errors
+                this.audioTiltUp.addEventListener('loadeddata', () => {
+                    console.log('Tilt up audio loaded successfully');
+                    console.log('Tilt up audio duration:', this.audioTiltUp.duration);
+                });
+                
+                this.audioTiltDown.addEventListener('loadeddata', () => {
+                    console.log('Tilt down audio loaded successfully');
+                    console.log('Tilt down audio duration:', this.audioTiltDown.duration);
+                });
+                
+                this.audioTiltUp.addEventListener('error', (e) => {
+                    console.error('Error loading tilt up audio:', e);
+                    console.error('Tilt up audio error details:', e.target.error);
+                });
+                
+                this.audioTiltDown.addEventListener('error', (e) => {
+                    console.error('Error loading tilt down audio:', e);
+                    console.error('Tilt down audio error details:', e.target.error);
+                });
+                
+                // Add canplay events to track when audio is ready
+                this.audioTiltUp.addEventListener('canplay', () => {
+                    console.log('Tilt up audio can play');
+                });
+                
+                this.audioTiltDown.addEventListener('canplay', () => {
+                    console.log('Tilt down audio can play');
+                });
+                
+                // Add play events to track successful playback
+                this.audioTiltUp.addEventListener('play', () => {
+                    console.log('Tilt up audio started playing');
+                });
+                
+                this.audioTiltDown.addEventListener('play', () => {
+                    console.log('Tilt down audio started playing');
+                });
+                
+                // Add pause events
+                this.audioTiltUp.addEventListener('pause', () => {
+                    console.log('Tilt up audio paused');
+                });
+                
+                this.audioTiltDown.addEventListener('pause', () => {
+                    console.log('Tilt down audio paused');
+                });
+            }
+            
+            playAudio(direction) {
+                // Stop any currently playing audio
+                this.stopAllAudio();
+                
+                console.log(`Attempting to play audio for direction: ${direction}`);
+                
+                try {
+                    if (direction === 'up') {
+                        this.currentAudio = this.audioTiltUp;
+                        this.audioTiltUp.currentTime = 0;
+                        console.log('Playing tilt up audio...');
+                        this.audioTiltUp.play().catch(e => {
+                            console.error('Error playing tilt up audio:', e);
+                            console.error('Audio element state:', {
+                                paused: this.audioTiltUp.paused,
+                                ended: this.audioTiltUp.ended,
+                                currentTime: this.audioTiltUp.currentTime,
+                                duration: this.audioTiltUp.duration,
+                                readyState: this.audioTiltUp.readyState
+                            });
+                        });
+                    } else if (direction === 'down') {
+                        this.currentAudio = this.audioTiltDown;
+                        this.audioTiltDown.currentTime = 0;
+                        console.log('Playing tilt down audio...');
+                        this.audioTiltDown.play().catch(e => {
+                            console.error('Error playing tilt down audio:', e);
+                            console.error('Audio element state:', {
+                                paused: this.audioTiltDown.paused,
+                                ended: this.audioTiltDown.ended,
+                                currentTime: this.audioTiltDown.currentTime,
+                                duration: this.audioTiltDown.duration,
+                                readyState: this.audioTiltDown.readyState
+                            });
+                        });
+                    }
+                } catch (error) {
+                    console.error('Error in playAudio:', error);
+                }
+            }
+            
+            stopAllAudio() {
+                try {
+                    this.audioTiltUp.pause();
+                    this.audioTiltDown.pause();
+                    this.audioTiltUp.currentTime = 0;
+                    this.audioTiltDown.currentTime = 0;
+                    this.currentAudio = null;
+                } catch (error) {
+                    console.error('Error stopping audio:', error);
+                }
             }
             
             setupEventListeners() {
                 this.startButton.addEventListener('click', () => this.initialize());
-                
-                // Handle device orientation
-                if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-                    // iOS 13+ requires permission
-                    this.requestOrientationPermission();
-                } else {
-                    // Other devices
-                    window.addEventListener('deviceorientation', (event) => this.handleOrientation(event));
-                }
             }
             
             async requestOrientationPermission() {
                 try {
-                    const permission = await DeviceOrientationEvent.requestPermission();
-                    if (permission === 'granted') {
-                        window.addEventListener('deviceorientation', (event) => this.handleOrientation(event));
+                    // Check if we're on iOS and need permission
+                    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                        const permission = await DeviceOrientationEvent.requestPermission();
+                        if (permission === 'granted') {
+                            window.addEventListener('deviceorientation', (event) => this.handleOrientation(event));
+                            console.log('Device orientation permission granted');
+                        } else {
+                            this.status.textContent = 'Orientation permission denied';
+                            throw new Error('Orientation permission denied');
+                        }
                     } else {
-                        this.status.textContent = 'Orientation permission denied';
+                        // For non-iOS devices or older iOS versions
+                        window.addEventListener('deviceorientation', (event) => this.handleOrientation(event));
+                        console.log('Device orientation listener added (no permission required)');
                     }
                 } catch (error) {
                     console.error('Error requesting orientation permission:', error);
-                    // Fallback for older iOS versions
+                    // Fallback: try to add listener anyway
                     window.addEventListener('deviceorientation', (event) => this.handleOrientation(event));
+                    console.log('Fallback: added orientation listener without permission');
                 }
             }
             
             async initialize() {
                 try {
+                    // First, request orientation permission on iOS
+                    await this.requestOrientationPermission();
+                    
                     // Request camera access
                     const stream = await navigator.mediaDevices.getUserMedia({
                         video: {
@@ -281,8 +433,8 @@
                     this.startGuidance();
                     
                 } catch (error) {
-                    console.error('Error accessing camera:', error);
-                    this.status.textContent = 'Camera access denied or unavailable';
+                    console.error('Error accessing camera or orientation:', error);
+                    this.status.textContent = 'Camera or orientation access denied';
                 }
             }
             
@@ -292,12 +444,21 @@
                 this.updateGlowIndicator();
                 this.targetStartTime = Date.now(); // Start timing
                 this.lastMovementTime = Date.now(); // Start movement tracking
+                
+                // Start playing tilt up audio
+                this.playAudio('up');
             }
             
             handleOrientation(event) {
                 const beta = event.beta; // Front-to-back tilt (-180 to 180)
                 
-                if (beta === null) return;
+                if (beta === null) {
+                    console.log('Beta is null - no orientation data');
+                    return;
+                }
+                
+                // Debug: Log orientation data
+                console.log(`Orientation: beta=${beta}°, alpha=${event.alpha}°, gamma=${event.gamma}°`);
                 
                 // Check for movement (more than 1 degree change)
                 if (this.lastBeta !== null && Math.abs(beta - this.lastBeta) > 1) {
@@ -359,6 +520,9 @@
                 if (achieved && !this.hasReachedTarget) {
                     this.hasReachedTarget = true;
                     
+                    // Stop audio when target is reached
+                    this.stopAllAudio();
+                    
                     // Check if movement was too fast
                     const timeToReachTarget = Date.now() - this.targetStartTime;
                     const isTooFast = timeToReachTarget < this.minTargetDuration;
@@ -406,11 +570,15 @@
                     this.targetAngle = 40;
                     this.status.textContent = 'Tilt iPad DOWN to 40°';
                     this.status.className = 'status target-down';
+                    // Start playing tilt down audio
+                    this.playAudio('down');
                 } else {
                     this.currentTarget = 'up';
                     this.targetAngle = 80;
                     this.status.textContent = 'Tilt iPad UP to 80°';
                     this.status.className = 'status target-up';
+                    // Start playing tilt up audio
+                    this.playAudio('up');
                 }
                 
                 this.hasReachedTarget = false;
@@ -452,20 +620,10 @@
                 this.isPulsing = false;
             }
             
-            growGlowForInactivity(inactiveTime) {
-                // This method is no longer used - replaced with pulsing effect
-                // Keeping for compatibility
-            }
-            
-            switchTarget() {
-                // This method is no longer used - keeping for compatibility
-                // Target switching now happens immediately via switchTargetImmediate()
-            }
-            
             resetGlowSize() {
                 // Reset glow to maximum size when switching targets
                 // Clean up both glows to prevent conflicts
-                this.glowTop.style.height = '500px'; // Updated to match new default size
+                this.glowTop.style.height = '500px';
                 this.glowBottom.style.height = '500px';
                 
                 // Ensure only the correct glow is visible
@@ -514,7 +672,6 @@
                 const activeGlow = this.currentTarget === 'up' ? this.glowTop : this.glowBottom;
                 
                 // Size ranges from 500px (far from target) to 150px (at target)
-                // Increased minimum size to ensure better visibility of effects
                 const maxSize = 500;
                 const minSize = 150;
                 const currentSize = maxSize - (proximity * (maxSize - minSize));
