@@ -84,8 +84,7 @@
     const ballHeight = 40;
 
     let userBeta = 60;
-    let accumulatedMotion = 0; // Track forward/backward motion
-    let lastAcceleration = null;
+    let startTime = Date.now();
 
     function betaToY(beta) {
       const clamped = Math.max(betaMin, Math.min(betaMax, beta));
@@ -97,10 +96,20 @@
     function animate() {
       const areaHeight = gameArea.clientHeight;
 
-      // Use accumulated motion to drive sine wave
-      const radians = accumulatedMotion;
-      const sine = (Math.sin(radians - Math.PI / 2) + 1) / 2; // 0–1
-      const targetY = sine * (areaHeight - ballHeight);
+      // Calculate time-based movement: 2 seconds up, 2 seconds down (4 second cycle)
+      const elapsedTime = (Date.now() - startTime) / 1000; // Convert to seconds
+      const cycleTime = elapsedTime % 4; // 4-second cycle
+      
+      let progress;
+      if (cycleTime <= 2) {
+        // First 2 seconds: move from bottom to top (0 to 1)
+        progress = cycleTime / 2;
+      } else {
+        // Next 2 seconds: move from top to bottom (1 to 0)
+        progress = 1 - ((cycleTime - 2) / 2);
+      }
+      
+      const targetY = (1 - progress) * (areaHeight - ballHeight);
 
       const userY = betaToY(userBeta);
 
@@ -109,7 +118,7 @@
       ball.style.top = `${userY}px`;
 
       // Compare tilt vs line
-      const targetBeta = betaMin + (1 - sine) * (betaMax - betaMin);
+      const targetBeta = betaMin + (1 - progress) * (betaMax - betaMin);
       const diff = Math.abs(userBeta - targetBeta);
       if (diff <= marginDeg) {
         ball.style.backgroundColor = 'lime';
@@ -128,28 +137,9 @@
       }
     }
 
-    function handleMotion(event) {
-      if (event.acceleration && event.acceleration.y !== null) {
-        const currentAccel = event.acceleration.y;
-        
-        // Apply a simple low-pass filter to smooth the data
-        if (lastAcceleration !== null) {
-          const smoothedAccel = 0.8 * lastAcceleration + 0.2 * currentAccel;
-          
-          // Accumulate forward/backward motion (y-axis when iPad is held in portrait)
-          // Scale the acceleration to make the movement more noticeable
-          const motionScale = 0.1;
-          accumulatedMotion += smoothedAccel * motionScale;
-          
-          lastAcceleration = smoothedAccel;
-        } else {
-          lastAcceleration = currentAccel;
-        }
-      }
-    }
-
     function startGame() {
       window.addEventListener('deviceorientation', handleOrientation);
+      startTime = Date.now(); // Reset start time when game starts
       requestAnimationFrame(animate);
       statusText.textContent = 'Tracking...';
     }
