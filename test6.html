@@ -4,6 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>iPad Orientation Guide PoC</title>
+    
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
     <style>
         * {
             margin: 0;
@@ -108,6 +112,53 @@
             100% { opacity: 1; }
         }
 
+        .arrow-indicator {
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 120px;
+            height: 120px;
+            background-color: rgba(255, 255, 255, 0.9);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 80px;
+            color: #2196f3;
+            z-index: 25;
+            transition: all 0.5s ease;
+            box-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
+            pointer-events: none;
+        }
+
+        .arrow-up {
+            top: 30px;
+        }
+
+        .arrow-down {
+            bottom: 80px;
+        }
+
+        .arrow-pulse {
+            animation: arrowPulse 1.5s ease-in-out infinite;
+        }
+
+        @keyframes arrowPulse {
+            0% { 
+                opacity: 0.7;
+                transform: translateX(-50%) scale(1);
+            }
+            50% { 
+                opacity: 1;
+                transform: translateX(-50%) scale(1.1);
+                box-shadow: 0 0 30px rgba(255, 255, 255, 0.5);
+            }
+            100% { 
+                opacity: 0.7;
+                transform: translateX(-50%) scale(1);
+            }
+        }
+
         .hidden {
             opacity: 0;
         }
@@ -127,7 +178,7 @@
 
         #debugInfo {
             position: absolute;
-            bottom: 20px;
+            bottom: 80px;
             left: 20px;
             background: rgba(0, 0, 0, 0.7);
             color: white;
@@ -192,26 +243,36 @@
         <div id="glowTop" class="glow-indicator glow-top hidden"></div>
         <div id="glowBottom" class="glow-indicator glow-bottom hidden"></div>
         
+        <!-- Arrow indicators -->
+        <div id="arrowUp" class="arrow-indicator arrow-up hidden">
+            <i class="fas fa-arrow-up"></i>
+        </div>
+        <div id="arrowDown" class="arrow-indicator arrow-down hidden">
+            <i class="fas fa-arrow-down"></i>
+        </div>
+        
         <button id="startButton">Start Camera & Orientation</button>
         
         <div id="info">
             <div>iPad Orientation Guide</div>
             <div class="status" id="status">Click Start to begin</div>
             <div style="margin-top: 10px; font-size: 12px;">
-                Target: Tilt between 40° and 80°<br>
+                Target: <span id="dynamicRange">Tilt between 40° and 80°</span><br>
                 Follow the glow: Blue → Green when correct<br>
                 <span style="color: #ff3333;">Red = Too fast! Move slowly</span><br>
                 <span style="color: #64b5f6;">Pulsing glow = Move the iPad!</span><br>
                 <span style="color: #ffd700;">🔊 Audio will guide you!</span><br>
+                <span style="color: #90ee90;">📱 Works in both portrait and landscape!</span><br>
                 <span style="color: #888; font-size: 11px;">Note: You'll be asked for camera & orientation permissions</span>
             </div>
         </div>
         
         <div id="debugInfo">
-            <div>Beta (Tilt): <span id="betaValue">--</span>°</div>
+            <div>Tilt (<span id="axisLabel">Beta</span>): <span id="betaValue">--</span>°</div>
             <div>Target: <span id="targetDirection">--</span></div>
             <div>In Range: <span id="inRange">--</span></div>
             <div>Time: <span id="timeElapsed">--</span>s</div>
+            <div>Mode: <span id="orientationMode">Portrait</span></div>
         </div>
     </div>
 
@@ -224,6 +285,10 @@
                 this.status = document.getElementById('status');
                 this.startButton = document.getElementById('startButton');
                 
+                // Arrow elements
+                this.arrowUp = document.getElementById('arrowUp');
+                this.arrowDown = document.getElementById('arrowDown');
+                
                 // Audio elements
                 this.audioTiltUp = document.getElementById('audioTiltUp');
                 this.audioTiltDown = document.getElementById('audioTiltDown');
@@ -234,6 +299,9 @@
                 this.targetDirection = document.getElementById('targetDirection');
                 this.inRange = document.getElementById('inRange');
                 this.timeElapsed = document.getElementById('timeElapsed');
+                this.axisLabel = document.getElementById('axisLabel');
+                this.orientationMode = document.getElementById('orientationMode');
+                this.dynamicRange = document.getElementById('dynamicRange');
                 
                 // State management
                 this.currentTarget = 'up'; // 'up' or 'down'
@@ -249,8 +317,13 @@
                 this.lastMovementTime = null; // Track when user last moved
                 this.isPulsing = false; // Track if glow is currently pulsing
                 
+                // Orientation detection
+                this.isLandscape = false;
+                this.orientationAxis = 'beta'; // 'beta' for portrait, 'gamma' for landscape
+                
                 this.setupEventListeners();
                 this.setupAudio();
+                this.detectOrientation();
                 
                 // Add a global reference for debugging
                 window.orientationGuide = this;
@@ -385,6 +458,58 @@
             
             setupEventListeners() {
                 this.startButton.addEventListener('click', () => this.initialize());
+                
+                // Listen for orientation changes
+                window.addEventListener('orientationchange', () => {
+                    setTimeout(() => {
+                        this.detectOrientation();
+                        console.log(`Orientation changed: ${this.isLandscape ? 'Landscape' : 'Portrait'}, using ${this.orientationAxis} axis`);
+                    }, 100); // Small delay to ensure orientation has changed
+                });
+                
+                // Also listen for resize events as a fallback
+                window.addEventListener('resize', () => {
+                    this.detectOrientation();
+                });
+            }
+            
+            detectOrientation() {
+                // Detect if we're in landscape or portrait mode
+                const width = window.innerWidth;
+                const height = window.innerHeight;
+                
+                // Check both window dimensions and screen orientation API
+                const isLandscapeByDimensions = width > height;
+                const isLandscapeByAPI = screen.orientation ? 
+                    (screen.orientation.angle === 90 || screen.orientation.angle === -90 || screen.orientation.angle === 270) : 
+                    false;
+                
+                this.isLandscape = isLandscapeByDimensions || isLandscapeByAPI;
+                this.orientationAxis = this.isLandscape ? 'gamma' : 'beta';
+                
+                // Set different target angles based on orientation
+                if (this.isLandscape) {
+                    // Landscape mode: gamma axis is inverted compared to beta
+                    // When tilting "up" in landscape, gamma decreases (lower values)
+                    // When tilting "down" in landscape, gamma increases (higher values)
+                    this.minAngle = 20;
+                    this.maxAngle = 60;
+                    // Adjust current targets for landscape (inverted logic)
+                    this.targetAngle = this.currentTarget === 'up' ? 20 : 60; // Swapped!
+                } else {
+                    // Portrait mode: original angles for beta axis
+                    this.minAngle = 40;
+                    this.maxAngle = 80;
+                    // Adjust current targets for portrait
+                    this.targetAngle = this.currentTarget === 'up' ? 80 : 40;
+                }
+                
+                // Update debug display
+                this.axisLabel.textContent = this.orientationAxis.charAt(0).toUpperCase() + this.orientationAxis.slice(1);
+                this.orientationMode.textContent = this.isLandscape ? 'Landscape' : 'Portrait';
+                this.dynamicRange.textContent = `Tilt between ${this.minAngle}° and ${this.maxAngle}°`;
+                
+                console.log(`Orientation detected: ${this.isLandscape ? 'Landscape' : 'Portrait'} (${width}x${height}), using ${this.orientationAxis} axis, targets: ${this.minAngle}°-${this.maxAngle}°`);
             }
             
             async requestOrientationPermission() {
@@ -439,7 +564,11 @@
             }
             
             startGuidance() {
-                this.status.textContent = 'Tilt iPad UP to 80°';
+                if (this.isLandscape) {
+                    this.status.textContent = 'Tilt iPad UP to 20°'; // In landscape, "up" means lower gamma values
+                } else {
+                    this.status.textContent = 'Tilt iPad UP to 80°';
+                }
                 this.status.className = 'status target-up';
                 this.updateGlowIndicator();
                 this.targetStartTime = Date.now(); // Start timing
@@ -450,28 +579,39 @@
             }
             
             handleOrientation(event) {
-                const beta = event.beta; // Front-to-back tilt (-180 to 180)
+                // Get the appropriate tilt value based on orientation
+                let tiltValue;
+                if (this.orientationAxis === 'beta') {
+                    tiltValue = event.beta; // Front-to-back tilt in portrait (-180 to 180)
+                } else {
+                    tiltValue = event.gamma; // Left-to-right tilt in landscape (-90 to 90)
+                    // Normalize gamma to match beta range for consistency
+                    if (tiltValue !== null) {
+                        // Convert gamma range (-90 to 90) to beta-like range (0 to 180)
+                        tiltValue = tiltValue + 90; // Now 0 to 180
+                    }
+                }
                 
-                if (beta === null) {
-                    console.log('Beta is null - no orientation data');
+                if (tiltValue === null) {
+                    console.log(`${this.orientationAxis} is null - no orientation data`);
                     return;
                 }
                 
                 // Debug: Log orientation data
-                console.log(`Orientation: beta=${beta}°, alpha=${event.alpha}°, gamma=${event.gamma}°`);
+                console.log(`Orientation (${this.orientationAxis}): tilt=${tiltValue}°, beta=${event.beta}°, gamma=${event.gamma}°, alpha=${event.alpha}°`);
                 
                 // Check for movement (more than 1 degree change)
-                if (this.lastBeta !== null && Math.abs(beta - this.lastBeta) > 1) {
+                if (this.lastBeta !== null && Math.abs(tiltValue - this.lastBeta) > 1) {
                     this.lastMovementTime = Date.now();
                     // Stop pulsing when user starts moving
                     if (this.isPulsing) {
                         this.stopAllPulsing();
                     }
                 }
-                this.lastBeta = beta;
+                this.lastBeta = tiltValue;
                 
                 // Update debug info
-                this.betaValue.textContent = Math.round(beta);
+                this.betaValue.textContent = Math.round(tiltValue);
                 this.targetDirection.textContent = this.currentTarget;
                 
                 // Update elapsed time
@@ -481,40 +621,52 @@
                 }
                 
                 // Check if in target range
-                this.checkTargetRange(beta);
+                this.checkTargetRange(tiltValue);
                 
                 // Update glow color and size based on proximity to target
-                this.updateGlowColor(beta);
+                this.updateGlowColor(tiltValue);
                 
                 // Check for inactivity and grow glow if user is too slow
                 this.checkInactivity();
             }
             
-            checkTargetRange(beta) {
-                const isInRange = beta >= this.minAngle && beta <= this.maxAngle;
+            checkTargetRange(tiltValue) {
+                const isInRange = tiltValue >= this.minAngle && tiltValue <= this.maxAngle;
                 this.inRange.textContent = isInRange ? 'YES' : 'NO';
                 
                 if (isInRange && !this.isInTargetRange) {
                     // Just entered target range
                     this.isInTargetRange = true;
-                    this.checkTargetAchievement(beta);
+                    this.checkTargetAchievement(tiltValue);
                 } else if (!isInRange && this.isInTargetRange) {
                     // Left target range
                     this.isInTargetRange = false;
                     this.hasReachedTarget = false;
                 } else if (isInRange) {
                     // Still in range, check achievement
-                    this.checkTargetAchievement(beta);
+                    this.checkTargetAchievement(tiltValue);
                 }
             }
             
-            checkTargetAchievement(beta) {
+            checkTargetAchievement(tiltValue) {
                 let achieved = false;
                 
-                if (this.currentTarget === 'up' && beta >= 75) {
-                    achieved = true;
-                } else if (this.currentTarget === 'down' && beta <= 45) {
-                    achieved = true;
+                if (this.isLandscape) {
+                    // Landscape mode: gamma axis is inverted
+                    // "up" target means lower gamma values (around 20°)
+                    // "down" target means higher gamma values (around 60°)
+                    if (this.currentTarget === 'up' && tiltValue <= 25) {
+                        achieved = true;
+                    } else if (this.currentTarget === 'down' && tiltValue >= 55) {
+                        achieved = true;
+                    }
+                } else {
+                    // Portrait mode: original thresholds
+                    if (this.currentTarget === 'up' && tiltValue >= 75) {
+                        achieved = true;
+                    } else if (this.currentTarget === 'down' && tiltValue <= 45) {
+                        achieved = true;
+                    }
                 }
                 
                 if (achieved && !this.hasReachedTarget) {
@@ -567,15 +719,25 @@
                 // Switch target immediately when achieved
                 if (this.currentTarget === 'up') {
                     this.currentTarget = 'down';
-                    this.targetAngle = 40;
-                    this.status.textContent = 'Tilt iPad DOWN to 40°';
+                    if (this.isLandscape) {
+                        this.targetAngle = 60; // In landscape, "down" means higher gamma values
+                        this.status.textContent = 'Tilt iPad DOWN to 60°';
+                    } else {
+                        this.targetAngle = 40;
+                        this.status.textContent = 'Tilt iPad DOWN to 40°';
+                    }
                     this.status.className = 'status target-down';
                     // Start playing tilt down audio
                     this.playAudio('down');
                 } else {
                     this.currentTarget = 'up';
-                    this.targetAngle = 80;
-                    this.status.textContent = 'Tilt iPad UP to 80°';
+                    if (this.isLandscape) {
+                        this.targetAngle = 20; // In landscape, "up" means lower gamma values
+                        this.status.textContent = 'Tilt iPad UP to 20°';
+                    } else {
+                        this.targetAngle = 80;
+                        this.status.textContent = 'Tilt iPad UP to 80°';
+                    }
                     this.status.className = 'status target-up';
                     // Start playing tilt up audio
                     this.playAudio('up');
@@ -603,7 +765,10 @@
                 this.stopAllPulsing();
                 
                 const activeGlow = this.currentTarget === 'up' ? this.glowTop : this.glowBottom;
+                const activeArrow = this.currentTarget === 'up' ? this.arrowUp : this.arrowDown;
+                
                 activeGlow.classList.add('glow-pulse');
+                activeArrow.classList.add('arrow-pulse');
                 this.isPulsing = true;
             }
             
@@ -614,9 +779,11 @@
             }
             
             stopAllPulsing() {
-                // Stop pulsing on both glows to prevent conflicts
+                // Stop pulsing on both glows and arrows to prevent conflicts
                 this.glowTop.classList.remove('glow-pulse');
                 this.glowBottom.classList.remove('glow-pulse');
+                this.arrowUp.classList.remove('arrow-pulse');
+                this.arrowDown.classList.remove('arrow-pulse');
                 this.isPulsing = false;
             }
             
@@ -641,26 +808,44 @@
                 if (this.currentTarget === 'up') {
                     this.glowTop.classList.remove('hidden');
                     this.glowBottom.classList.add('hidden');
+                    // Show up arrow, hide down arrow
+                    this.arrowUp.classList.remove('hidden');
+                    this.arrowDown.classList.add('hidden');
                 } else {
                     this.glowTop.classList.add('hidden');
                     this.glowBottom.classList.remove('hidden');
+                    // Show down arrow, hide up arrow
+                    this.arrowUp.classList.add('hidden');
+                    this.arrowDown.classList.remove('hidden');
                 }
                 
                 // Reset size when showing new glow
                 this.resetGlowSize();
             }
             
-            updateGlowColor(beta) {
+            updateGlowColor(tiltValue) {
                 const activeGlow = this.currentTarget === 'up' ? this.glowTop : this.glowBottom;
                 
                 // Don't interfere with green/red flashes - let them show regardless of movement
                 // Only update size based on proximity, color stays blue until target reached
                 if (this.isInTargetRange && !this.hasReachedTarget) {
                     let proximity = 0;
-                    if (this.currentTarget === 'up') {
-                        proximity = Math.max(0, (beta - 60) / 20); // Start transition from 60° to 80°
+                    if (this.isLandscape) {
+                        // Landscape mode: gamma axis is inverted
+                        // "up" target (lower values): transition from 40° down to 20°
+                        // "down" target (higher values): transition from 40° up to 60°
+                        if (this.currentTarget === 'up') {
+                            proximity = Math.max(0, (40 - tiltValue) / 20); // Start transition from 40° down to 20°
+                        } else {
+                            proximity = Math.max(0, (tiltValue - 40) / 20); // Start transition from 40° up to 60°
+                        }
                     } else {
-                        proximity = Math.max(0, (60 - beta) / 20); // Start transition from 60° to 40°
+                        // Portrait mode: original proximity calculation
+                        if (this.currentTarget === 'up') {
+                            proximity = Math.max(0, (tiltValue - 60) / 20); // Start transition from 60° to 80°
+                        } else {
+                            proximity = Math.max(0, (60 - tiltValue) / 20); // Start transition from 60° to 40°
+                        }
                     }
                     
                     proximity = Math.min(1, proximity);
